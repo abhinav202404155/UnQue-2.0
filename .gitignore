@@ -62,3 +62,13 @@ Dockerfile
 docker-compose.yml
 docker-compose.override.yml
 docker/
+
+# Postman local files
+postman/
+.postman/
+
+# AWS / SSH keys
+*.pem
+
+# DocumentDB CA bundle (EC2 pe download hoga)
+global-bundle.pem
