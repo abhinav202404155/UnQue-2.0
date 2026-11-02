@@ -63,7 +63,85 @@ const setAvailability = async (req, res, next) => {
   }
 };
 
+const updateAvailability = async (req, res, next) => {
+  try {
+    const { slotId } = req.params;
+    const { startTime, endTime } = req.body;
 
+    if (!mongoose.Types.ObjectId.isValid(slotId)) {
+      return next(new HttpError("Invalid slot ID format", 400));
+    }
+
+    if (!startTime || !endTime) {
+      return next(new HttpError("Please provide both start and end time", 400));
+    }
+
+    const start = new Date(startTime);
+    const end = new Date(endTime);
+
+    if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+      return next(new HttpError("Invalid date format provided", 400));
+    }
+
+    if (start >= end) {
+      return next(new HttpError("Start time must be before end time", 400));
+    }
+
+    const slot = await Availability.findById(slotId);
+    if (!slot) {
+      return next(new HttpError("Slot not found", 404));
+    }
+
+    if (slot.professorId.toString() !== req.user.id.toString()) {
+      return next(new HttpError("Unauthorized action", 403));
+    }
+
+    const hasBooking = await Appointment.findOne({
+      professorId: req.user.id,
+      status: "booked",
+      time: { 
+        $gte: slot.startTime, 
+        $lte: slot.endTime 
+      }
+    });
+
+    if (hasBooking) {
+      return next(new HttpError("Cannot update: slot already has a booked appointment", 400));
+    }
+
+    const clash = await Availability.findOne({
+      _id: { $ne: slotId },
+      professorId: req.user.id,
+      $or: [
+        { startTime: { $lt: end }, endTime: { $gt: start } },
+        { startTime: { $lt: start }, endTime: { $gt: end } }
+      ]
+    });
+
+    if (clash) {
+      return next(new HttpError("Time slot overlaps with an existing slot", 400));
+    }
+
+    slot.startTime = start;
+    slot.endTime = end;
+    await slot.save();
+
+    const formattedStartTime = moment.utc(slot.startTime).format("MMMM Do YYYY, h:mm:ss a");
+    const formattedEndTime = moment.utc(slot.endTime).format("MMMM Do YYYY, h:mm:ss a");
+
+    res.status(200).json({
+      message: "Availability updated successfully",
+      availability: {
+        ...slot.toObject(),
+        startTime: formattedStartTime,
+        endTime: formattedEndTime
+      }
+    });
+  } catch (error) {
+    console.log(error);
+    return next(new HttpError("Updating availability failed", 500));
+  }
+};
 
   const cancelAppointments = async(req,res,next) => {
     try {
@@ -107,4 +185,4 @@ const setAvailability = async (req, res, next) => {
       return next(new HttpError(error));
     }
   };
-export {setAvailability, cancelAppointments};
+export {setAvailability, cancelAppointments, updateAvailability};
